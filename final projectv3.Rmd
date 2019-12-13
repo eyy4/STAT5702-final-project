@@ -1,0 +1,472 @@
+---
+runtime: shiny
+output: html_document
+title: Exploring Income Inequality with Employment Data
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# I. Introduction
+
+Much has been written about the growing income inequality in the United States. There are multiple angles that one could look at the issue, and most publications look at it from the a fairly high-level scope (e.g., top 1% vs. the 99%, or CEO pay vs. average worker). In addition, much has been made about the loss of jobs in America. The loss of blue collar careers that had once seemed a steady and safe bet (e.g., the local car manufacturing plant) have devasted local communities.
+
+This study aims to review income inequality and the rise / gain of jobs by reviewing jobs data in the US from 2008 and 2018, to see what patterns the data might tell us about (1) confirming whether the jobs data conforms to the story of growing income inequality and (2) what additional explanatory (or mitigating) factors might be available upon review of the data.
+
+# II. Data sources
+
+The primary data source for this project comes from the Bureau of Labor Statistic's Occupational Employment Statistics which produces employment and wage estimates annually for over 800 occupations. The home page for the BLS OES program is below.
+
+https://www.bls.gov/oes/home.htm
+
+The OES produces yearly data on employment figures by job category which include the # employed as well as the average, median, 10th, 25th, 75th and 90th percentile salary and hourly wage (as available). The OES estimates their data at the national, state, and metropolitan/non-metropolitan areas through a semi-annual mail survey of non-farm establishments. The establishments sampled are derived from a list of establishments maintained by State Workforce Agencies, and are intended to be representative ofevery metropolitan/non-metropolitan area in every state, across all surveyed industries, and from establishments of varying sizes. The collected data are used to produce occupational estimates at the National, State, and sub-state levels. For this analysis, we have decided to focus solely on the national dataset, although such analysis could easily be extended into the state and non-metroplitan/metropolitan datasets as well.
+
+The two datasets that were chosen for this study were the May 2008 and May 2018 occupational profiles Nationally.
+The major data fields are as follows:
+* occ_code = 7 digit standard Occupational Classication (SOC code)
+* OCC_title = Standard occupational classification title
+* Group = indicates whether the occupational classification is for a total, major, or minor category
+* tot_emp = Total estimated employment rounded to the nearest 10
+* a_mean = mean annual wage
+* a_pct25, a_pct25, a_median, a_pct75, a_pct90 = the annual 10th, 25th, 50th, 75th and 90th percentile salary
+
+Each entry in the dataset corresponds to an OCC-code. The OCC-codes are Standard Occupational Classification codes which are intended to cover all occupations in which work is performed for pay or profit. Each individual job in the US is supposed to correspond to one detailed OCC_code (e.g., 11-9031, Education and Childcare Administrators, Preschool and Daycare), which rolls into a broad group (e.g., 11-9030, Education and Childcare Administrators), which rolls up into a minor group (11-9000, Other Management Occupations), and are rolled up into a major group (e.g., 11-000, Management Occupations), and finally which are all rolled up into the total group (00-000, the total). More information about the SOC codes can be found here: https://www.bls.gov/soc/2018/home.htm, with a particularly good guide to the structure of the SOC codes here: https://www.bls.gov/soc/2018/soc_structure_2018.pdf.
+
+The national dataset has only entry per code. In 2008, there was 1 OCC-code corresponding to the total, 22 codes corresponding the "major" categories, and 800 corresponding to the detailed categories (with no breakout of the minor or broad categories). In 2018, there was 1 code corresponding to the total, 22 corresponding to the major, 93 corresponding to the minor, 455 corresponding to the broad, and 808 corresponding to the detailed categories.
+
+There are some cavaets on occupations that the OES data does not include. The OES does not include estimates of the self-employed, nor the unemployed. In addition, there are some shortcomines with the data that required adjustments (see the following two sections). In addition, as the OED has estimates including rounding, there will be instances when added totals will not add up to the "total". However, it is likely the highest quality source with the most comprehensive estimate of total employment across all sectors in the US, and it was therefore chosen for this study.
+
+# III. Data transformation
+
+The OED data in addition to the standard data import / conversion steps required adjustments for a few shortcomings:
+* Missing and changing data (see section below)
+* The purpose of the study is to look at changes in average salary. When comparing the salary increases between 2008 to 2018, we should be comparing numbers on an inflation adjusted basis. Therefore, 2008 salary figures were adjusted to 2018 dollars by increasing them by 16.63% (per: https://www.in2013dollars.com/2008-dollars-in-2018?amount=100) so that we may look at changes in salary in real $ values.
+* Anonymized annual wages - In 2008, occupational codes that had a wage greater than $80.00 per hour or $166,400 per year were indicated with # instead of the actual number, and in 2018, occupational codes that had a wage greater than $80.00 per hour or $208,000 per year were indicated with # instead of the actual number. Therefore for these entires, they were replaced with $166,400 (x 1 + the inflation rate) and $208,000 as placeholders.
+
+```{r message = FALSE, warning = FALSE}
+library(readxl)
+library(dplyr)
+
+
+## National Data
+# Loading National Data
+employment2018 <- read_xlsx('national_M2018_dl.xlsx')
+employment2008 <- read_excel('national__M2008_dl.xls')
+
+employment2008$a_mean[employment2008$a_mean == "#"] <- 166400
+employment2008$a_pct10[employment2008$a_pct10 == "#"] <- 166400
+employment2008$a_pct25[employment2008$a_pct25 == "#"] <- 166400
+employment2008$a_median[employment2008$a_median == "#"] <- 166400
+employment2008$a_pct75[employment2008$a_pct75 == "#"] <- 166400
+employment2008$a_pct90[employment2008$a_pct90 == "#"] <- 166400
+
+employment2018$A_MEAN[employment2018$A_MEAN == "#"] <- 208000
+employment2018$A_PCT10[employment2018$A_PCT10 == "#"] <- 208000
+employment2018$A_PCT25[employment2018$A_PCT25 == "#"] <- 208000
+employment2018$A_MEDIAN[employment2018$A_MEDIAN == "#"] <- 208000
+employment2018$A_PCT75[employment2018$A_PCT75 == "#"] <- 208000
+employment2018$A_PCT90[employment2018$A_PCT90 == "#"] <- 208000
+
+# Converting to numeric with the price adjustment
+Priceadjustment = 1.1663
+
+employment2008$tot_emp <- as.numeric(employment2008$tot_emp)
+employment2008$a_mean <- as.numeric(employment2008$a_mean) * Priceadjustment
+employment2008$a_pct25 <- as.numeric(employment2008$a_pct25) * Priceadjustment
+employment2008$a_median <- as.numeric(employment2008$a_median) * Priceadjustment
+employment2008$a_pct75 <- as.numeric(employment2008$a_pct75) * Priceadjustment
+employment2008$a_pct90 <- as.numeric(employment2008$a_pct90) * Priceadjustment
+
+
+employment2018$TOT_EMP <- as.numeric(employment2018$TOT_EMP)
+employment2018$A_MEAN <- as.numeric(employment2018$A_MEAN)
+employment2018$A_PCT25 <- as.numeric(employment2018$A_PCT25)
+employment2018$A_MEDIAN <- as.numeric(employment2018$A_MEDIAN)
+employment2018$A_PCT75 <- as.numeric(employment2018$A_PCT75)
+employment2018$A_PCT90 <- as.numeric(employment2018$A_PCT90)
+
+# extracting names for use later
+Names2018 <- employment2018 %>% select(OCC_CODE, OCC_TITLE)
+
+# Renaming Columns
+employment2018 <- employment2018 %>% rename("TOT_EMP_2018" = "TOT_EMP", "A_MEAN_2018" = "A_MEAN", "A_PCT10_2018" = "A_PCT10", "A_PCT25_2018" = "A_PCT25", "A_MEDIAN_2018" = "A_MEDIAN", "A_PCT75_2018" = "A_PCT75", "A_PCT90_2018" = "A_PCT90")
+
+employment2008 <- employment2008 %>% rename("OCC_CODE" = "occ_code", "TOT_EMP_2008" = "tot_emp", "A_MEAN_2008" = "a_mean", "A_PCT10_2008" = "a_pct10", "A_PCT25_2008" = "a_pct25", "A_MEDIAN_2008" = "a_median", "A_PCT75_2008" = "a_pct75", "A_PCT90_2008" = "a_pct90")
+
+
+# Selecting only relevant columns
+employment2018 <- employment2018[c("OCC_CODE", "TOT_EMP_2018", "A_MEAN_2018",  "A_PCT10_2018", "A_PCT25_2018", "A_MEDIAN_2018","A_PCT75_2018","A_PCT90_2018")] 
+employment2008 <- employment2008[c("OCC_CODE", "TOT_EMP_2008", "A_MEAN_2008",  "A_PCT10_2008", "A_PCT25_2008", "A_MEDIAN_2008","A_PCT75_2008","A_PCT90_2008")] 
+
+# Loading in name changes
+
+# Creating a function https://stackoverflow.com/questions/7963898/extracting-the-last-n-characters-from-a-string-in-r
+substrRight <- function(x, n){
+  substr(x, nchar(x)-n+1, nchar(x))
+}
+
+
+# Merging
+employment <- full_join(employment2008, employment2018, by = c("OCC_CODE"))
+employment <- employment %>% mutate(OCC_GROUP = case_when(OCC_CODE == "00-0000" ~ "total",
+                                              substrRight(OCC_CODE, 4) == "0000" ~ "major",
+                                              TRUE ~ "detailed"))
+```
+
+# IV. Missing values
+
+There were a few systematically "missing" values 
+* In addition to the wages greater than $166,400/$208,000 which were adjusted for previously, there were some OCC-codes with a missing wage estimate / employment estimate. These are typically in a small percentage of detailed OCC-codes.
+* changing codes - The Office of Management and Budget will occasionally the SOC classification of jobs by changing codes, changing titles, and changing the content and coverage of codes. Many of these changes are to define new and emerging job categories (e.g., new codes related to new jobs related to engineering), or to merge existing job categories into one (e.g., consolidating job categories related to printing).
+
+```{r message = FALSE, warning = FALSE}
+library(extracat)
+
+visna(employment)
+```
+
+As a result of the two factors above, there are a number of entries that are either missing "2008" or "2018" data because their OCC code could not be matched (either because the job had been newly defined, had been removed, or had been merged). Those entries are reflected in the 2nd and 4th row of the above.
+
+In addition, a smaller number of datapoints missing a subset of data values which typically correspond to detailed OCC codes where not enough data exists (e.g., there were estimated to be ~47K actors and ~10K dancers in the US, but no annual wage information was available for those professions). Those entries are reflected in the 3rd and 5th row above (with the 5th row being those that both could not be matched, and had a subset of data missing).
+
+Note that although the total number of rows with missing categories is very large, the rows themselves represent distinct OCC-codes, and many of the rows with missing values correspond to those OCC-codes which tend to be much smaller in terms of the total # of people employed.
+
+Regardless, to avoid such issues, for the first pass, we have decided to look at only the major OCC categories for which there is no missing data in any of our fields of interest. The usage of the logical not to complete.cases() reveals there are no missing values for the major OCC categories.
+
+To double check that rounding is not an issue, we've also compared the total employed figures by adding up all of the major categories to the total employed figure and found it to be within an error of 20 job, which is highly reasonable considering the rounding of each figure to the nearest 10.
+
+```{r message = FALSE, warning = FALSE}
+employment_major <- subset(employment, OCC_GROUP == "major")
+# employment_major[!complete.cases(employment_major),]
+# Supressing printing as there's nothing to look at
+
+SumofMajors <- employment_major %>% summarize(total_employed_2008 = sum(TOT_EMP_2008), total_employed_2018 = sum(TOT_EMP_2018))
+print(paste("The sum of total employed by major job category in", c("2008", "2018"),":",SumofMajors))
+print(paste("The total employed reported for all categories in", c("2008", "2018"),":",employment[1, c(2, 9)]))
+```
+
+# V. Results
+
+For the bulk of the analysis, we reviewed a few major questions.
+
+## Does our data at the highest-level confirm reports about growing income disparity in the US?
+
+```{r message = FALSE, warning = FALSE}
+library(scales)
+library(ggplot2)
+library(reshape2)
+
+employment <- employment %>% mutate(Change_Tot_Employment = TOT_EMP_2018-TOT_EMP_2008)
+
+totaldata <- subset(employment, OCC_CODE=="00-0000")
+totaldata <- totaldata %>% select(OCC_CODE, A_PCT10_2008, A_PCT25_2008, A_MEDIAN_2008, A_PCT75_2008, A_PCT90_2008, A_PCT10_2018, A_PCT25_2018, A_MEDIAN_2018, A_PCT75_2018, A_PCT90_2018)
+
+totaldata <- melt(totaldata, id.vars="OCC_CODE")
+totaldata$variable <- as.character(totaldata$variable)
+
+totaldata <- totaldata %>% mutate(X = case_when(
+  substrRight(variable, 5) == "_2008" ~ "2008",
+  TRUE ~ "2018"))
+totaldata$variable <- gsub("_2008", "", totaldata$variable)
+totaldata$variable <- gsub("_2018", "", totaldata$variable)
+totaldata$value <- as.numeric(totaldata$value)
+
+
+totaldata <- dcast(totaldata, X ~ variable)
+
+ggplot(totaldata, aes(x=X, ymin = A_PCT10, 
+         ymax = A_PCT90, lower = A_PCT10, 
+         upper = A_PCT90, middle = A_MEDIAN)) + 
+     geom_boxplot(stat = 'identity') +
+     ggtitle("Modified 'boxplots' of Ann. Wages in the US") +
+     xlab('By Year for All Occupations') + 
+     ylab('10th, 25th, 50th, 75th, and 90th pctl. ann. wages') +
+     geom_crossbar(aes(y = A_PCT25 )) +
+     geom_crossbar(aes(y = A_PCT75))
+
+print(paste("Difference between the 90th percentile and 10th percentile in 2008:",totaldata[totaldata$X=="2008",]$A_PCT90-totaldata[totaldata$X=="2008",]$A_PCT10))
+
+print(paste("Difference between the 90th percentile and 10th percentile in 2018:",totaldata[totaldata$X=="2018",]$A_PCT90-totaldata[totaldata$X=="2018",]$A_PCT10))
+```
+
+From the "boxplots" above, we can see that the 90th percentile of anual wages appears to have increased greatly from 2018 to 2008, but visually the 10th percentile of annual wages does not appear to have risen as strongly. We can confirm this with the numbers themselves which confirm that the difference between the 90th and 10th percentile in 2008 amounted to $75,481, while the difference in 2018 amounts to slightly more -- $77,720. 
+
+Perhaps even more strikingly however, the data reveals that while the 10th, 75th and 90th percentile have enjoyed increases in real wages (after inflation), the 25th and 50th percentile have barely moved.
+
+## How have the total employment figures grown from 2008 to 2018? Which major occupational categories have grown the most and which have shrunk the most?
+
+Note: For this analysis, we have decided to look at growth on an absolute rather than percentage basis as we are more interested in understanding the total changes in jobs rather than which job categories are the fastest growing / shrinking. 
+
+Prior to proceeding, we should take a look at the distribution of jobs by job category and the distribution of average salaries across the major OCC code categories. 
+
+```{r message = FALSE, warning = FALSE}
+major_emp_trends <- employment %>% filter(OCC_GROUP == "major")
+
+# Merging back the titles so we can label them appropriately 
+major_emp_trends <- left_join(major_emp_trends, Names2018, by="OCC_CODE")
+# Many of the titles end in ... Occupations, so removing those for ease of reading.
+major_emp_trends$OCC_TITLE <- gsub(" Occupations", "", major_emp_trends$OCC_TITLE)
+
+ggplot(major_emp_trends, aes(x=reorder(OCC_TITLE, TOT_EMP_2018), y = TOT_EMP_2018)) + 
+  geom_bar(stat="identity", color="black", fill="lightBlue") +
+  ggtitle("Total # Employed in 2018 by Job Category") +
+  scale_y_continuous(labels = comma) +
+  xlab("") +
+  ylab("") +
+  coord_flip()
+```
+
+
+This histogram below reveals there is a mixture with some OCC code categories have an annual salary as low ~25,000, and some having one as high as ~120,000. As the purpose of this study is look at how changes in jobs have contributed to growing income inequality, the remainder of this will look at a list of jobs sorted in descending order (highest to lowest) by annual salary.
+```{r message = FALSE, warning = FALSE}
+ggplot(major_emp_trends, aes(x=A_MEAN_2008)) + 
+  geom_histogram(binwidth=5000, color="black", fill="lightBlue") +
+  ggtitle("Histogram of Average Salaries in 2008 (adjusted for 2018 dollars)") +
+  xlab("Average Salary of 22 OCC Major Job Codes")
+```
+
+For reference, the salaries of major job categories ordered follows below.
+
+```{r message = FALSE, warning = FALSE}
+ggplot(major_emp_trends, aes(x=reorder(OCC_TITLE, A_MEAN_2008), y = A_MEAN_2008)) + 
+  geom_bar(stat="identity", color="black", fill="lightBlue") +
+  ggtitle("2008 Avg Ann. Wage (in 2018 $)") +
+  scale_y_continuous(labels = comma) +
+  xlab("") +
+  ylab("") +
+  coord_flip()
+```
+
+Finally, below is a waterfall chart that disaggregates the growth in total job by each job category and shows how much of the increase was contributed by which category.
+
+```{r, fig.width=10, fig.height=9,  message = FALSE, warning = FALSE}
+library(plotly)
+
+
+# Plotly guide to making waterfall charts https://plot.ly/r/waterfall-charts/
+beginningamt = subset(employment, OCC_CODE == "00-0000")$TOT_EMP_2008
+endingamt = subset(employment, OCC_CODE == "00-0000")$TOT_EMP_2018
+
+major_emp_trends_sorted <- arrange(major_emp_trends, -A_MEAN_2008)
+
+
+titles <- list("# Employed - 2008", major_emp_trends_sorted$OCC_TITLE, "# Employed - 2018")
+titles <- unlist(titles)
+measure <- c("total", rep("relative", times = nrow(major_emp_trends_sorted)), "total")
+text <- unlist(c(beginningamt/1000, major_emp_trends_sorted$Change_Tot_Employment/1000, endingamt/1000))
+y = unlist(c(beginningamt, major_emp_trends_sorted$Change_Tot_Employment, 0))/1000
+data = data.frame(titles=factor(titles,levels=titles),measure,text,y)
+
+p  <- plot_ly(data, name = "gains/losses", type = "waterfall", measure = ~measure,
+  x = ~titles, textposition = "outside", y= ~y, text =~text,
+  connector = list(line = list(color= "rgb(63, 63, 63)"))) %>%
+  layout(title = "2008-2018 Change in Total Employed (in 000s)",
+        xaxis = list(title = "(in descending order by 2008 annual wage)", tickangle=90),
+        yaxis = list(title = "", 
+                     zeroline = FALSE,
+                     showline = FALSE,
+                     showticklabels = FALSE,
+                     showgrid = FALSE),
+        font = list(size=10),
+        autosize = TRUE,
+        margin = c(l = 150),
+        showlegend = FALSE)
+
+p
+```
+
+Note that here and elsewhere, job categories may be referred to solely by the first one or two words of their description for parsimony (e.g., Food Preparation and Serving -> Food or Food Prep).
+
+As we are looking at increases/decreases to jobs sorted by annual salary, the jobs on the left are those with the highest annual salary while those on the right are those with the lowest annual salary. The plot reveals a number of patterns: 
+* Job growth has monstly stemmed from categories on the far left (management jobs, computer, healthcare, business) and far right (personal care, food preparation). Many of the job categories in the middle are growing only slightly, or have shrunk (life and physical, construction, production, office and administration, building). 
+* In fact, it appears that of the 22 total major OCC job categories, only about ~6 are responsible for virtually all of the growth in the number employed.
+
+The strong division of job growth by category would preliminarily give strong credence to the assertion that the income disparity in the US has gotten worse. However, we will also continue to investigate this with our second question below.
+
+## How have the average salaries changed in the last 10 years between jobs that used to be the highest paying vs. lowest paying?
+
+Initially, it's easy to look at the change in average annual wage by high-paying vs. low-paying jobs, but it would also be helpful to understand how the spread of salaries has also changed. The code below accomplishes both.
+
+```{r message = FALSE, warning = FALSE}
+library(ggthemes)
+
+major_emp_trends <- major_emp_trends %>% mutate(Change_In_Salary = A_MEAN_2018-A_MEAN_2008, PCT_change_In_Salary=Change_In_Salary/A_MEAN_2008)
+
+major_emp_trends$OCC_TITLE <- factor(major_emp_trends$OCC_TITLE, levels = major_emp_trends$OCC_TITLE[order(major_emp_trends$A_MEAN_2008)])
+
+ggplot(major_emp_trends, aes(OCC_TITLE, PCT_change_In_Salary)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_y_continuous(labels = percent) +
+  ggtitle("% Chng 2008-2018 Real Ann. Wage") +
+  ylab("%") +
+  xlab("")+ 
+  theme_fivethirtyeight() +
+  theme(plot.title = element_text(size=14))
+
+
+ggplot(major_emp_trends, aes(OCC_TITLE, Change_In_Salary)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  ggtitle("Chng 2008-2018 Real Ann. Wage") +
+  ylab("$") +
+  xlab("") + 
+  theme_fivethirtyeight() +
+  theme(plot.title = element_text(size=14))
+```
+
+The graphs reveal the following
+* The result of the % change in annual wages looks promising as the highest increases in annual wages have been to the bottom major job codes which historically have the lowest wages. The increase in wages in Farming and Food Preparation are over 7.5% with Farming approaching nearly 10%
+* The view of the total change provides a more nuanced view. The highest total gross change in annual wages was to the management occupations, computer, and architecture job categories, but because they already enjoyed some of the highest annual wages, their percentage increase was lower in comparison with Farming and Food who had only experienced a ~$2-2.6K increase in annual wages
+* Only two job categories experienced a decline in annual wages: Sales and related occupations and Personal Care and Service occupations.
+* Again, it does appear that some of the worst-off job categories are those in the broad middle. With the exception of the legal profession, most job categories on the upper and lower ends gained, but the lowest rate of salary growth are observed in the middle, with education, business, arts, community, and installation all gaining < 2.5%.
+
+```{r message = FALSE, warning = FALSE, fig.width=9,fig.height=8}
+library(reshape2)
+
+comparison <- major_emp_trends %>% select(OCC_TITLE, A_PCT10_2008, A_PCT25_2008, A_MEDIAN_2008, A_PCT75_2008, A_PCT90_2008, A_PCT10_2018, A_PCT25_2018, A_MEDIAN_2018, A_PCT75_2018, A_PCT90_2018)
+
+comparison <- melt(comparison, id.vars="OCC_TITLE")
+comparison$variable <- as.character(comparison$variable)
+
+comparison <- comparison %>% mutate(X = case_when(
+  substrRight(variable, 5) == "_2008" ~ paste(OCC_TITLE,"2008"),
+  TRUE ~ paste(OCC_TITLE,"2018")))
+comparison$variable <- gsub("_2008", "", comparison$variable)
+comparison$variable <- gsub("_2018", "", comparison$variable)
+comparison$value <- as.numeric(comparison$value)
+
+comparison <- dcast(comparison, X + OCC_TITLE ~ variable)
+comparison$OCC_TITLE <- factor(comparison$OCC_TITLE, levels=major_emp_trends_sorted$OCC_TITLE)
+comparison <- comparison[order(comparison$OCC_TITLE, decreasing=TRUE),] 
+comparison$X <- factor(comparison$X, levels=comparison$X)
+
+ggplot(comparison, aes(x=X, ymin = A_PCT10, 
+         ymax = A_PCT90, lower = A_PCT10, 
+         upper = A_PCT90, middle = A_MEDIAN)) + 
+     geom_boxplot(stat = 'identity') +
+     coord_flip() +
+     ggtitle("Modified 'boxplots' of Ann. Wages") +
+     xlab('Category & Year') + 
+     ylab('10th, 25th, 50th, 75th, and 90th pctl. ann. wages') +
+     geom_crossbar(aes(y = A_PCT25 )) +
+     geom_crossbar(aes(y = A_PCT75))
+```
+
+These "modified" boxplots reveal a few more useful insights:
+* Purely on visual inspection, it can clearly be determined that the bottom 10th percentile in annual wages has gone up for every single category from 2008 to 2018
+* The change in the 90th percentile for annual wages for each job category appear to have gone up for most job categories, with the potential exception of Arts which appears to be flat and Sales and Personal Care which appears to have declined.
+* The median annual wage appears to have increased for most job categories with the exception of Legal, Life, Education, Protective, and Sales.
+* The current US poverty line for a family of 4 is approximately $25K. Unfortunately, for most job categories, their 10th percentile in annual wages appears to sit below the poverty line for 4, and a few categories with the lowest average annual wages (Food, Farming, Personal care) appear to have medians that appear near or below the poverty line for 4.
+* It appears the 90th percentile of salaries have gone up significantly in dollar terms for the top 3 occupational categories in terms of income (Management, Legal and Computer). On visual inspection, this increase in the 90th percentile, looks even greater than the increase in the 10th, 25th, 50th, and 75th percentiles in annual wages for all three of the categories (one possible exception is the Computer job category's 75th percentile which appears to have had a similar increase).
+* We can also infer a number of interesting observations about specific job categories such as:
+  * Although the legal and education had had a very low and negative increase in annual wages per the previous graph, the average increase income was largely due to the 25th, 50th and 75th percentile appear to have low annual wages, while the 10th and 90th percentile have increased 
+  * In contrast, Sales and Personal Care had also reported lower average annual wages in 2018 vs. 2008 in the previous graph. Unlike legal and education, however, this appears to be due to shrinkage in the 25th, 50th, 75th and 90th percentile categories (but with growth in the 10th percentile). 
+  * Interestingly enough, the annual wages in Farming in both the 10th and 25th percentile in 2018 appear to have increased beyond the levels of 25th percentile back in 2008, and cuurrently, there appears to be a very narrow difference between the 10th, 25th, and 50th percentile.
+
+
+# VI. Interactive component
+
+Our final question is:
+
+## How have individual job categories faired from 2008 to 2018?
+
+The following interactive graph pulls together data and distills it by individual job category. It has the advantages of pulling in information, and understanding trends by job category, and by plotting job categories individually, enabling the user to see greater details in trends (e.g., with Farming and Fishing for which the scales of prior plots in absolute values were difficult to read).
+
+<div style="margin-bottom:450px;">
+
+```{r echo=FALSE}
+library(shiny)
+library(ggplot2)
+library(gridExtra)
+library(tidyr)
+
+
+# Use a fluid Bootstrap layout
+fluidPage(    
+  
+  # Give the page a title
+  titlePanel("Major OCC Code"),
+  
+  # Generate a row with a sidebar
+  sidebarLayout(    
+    # Define the sidebar with one input
+    sidebarPanel(
+      selectInput("category", "Job Category:", 
+                  choices=major_emp_trends$OCC_TITLE),
+      hr(),
+      helpText("OCC Major Job Categories")
+    ),
+    
+    # Create a spot for the barplot
+    mainPanel(
+      plotOutput("comparePlot")  
+    )
+  )
+)
+
+```
+
+```{r echo=FALSE, context = "server"}
+# Fill in the spot we created for a plot
+output$comparePlot <- renderPlot({
+  subdata <- subset(major_emp_trends, OCC_TITLE == input$category) %>% select(OCC_TITLE, A_PCT10_2008, A_PCT25_2008, A_MEDIAN_2008, A_PCT75_2008, A_PCT90_2008, A_PCT10_2018, A_PCT25_2018, A_MEDIAN_2018, A_PCT75_2018, A_PCT90_2018)
+  subdata <- melt(subdata, id.vars="OCC_TITLE")
+  subdata$variable <- as.character(subdata$variable)
+  subdata <- subdata %>% mutate(Year = case_when(
+    substrRight(variable, 5) == "_2008" ~ 2008,
+    TRUE ~ 2018))
+  subdata$variable <- gsub("_2008", "", subdata$variable)
+  subdata$variable <- gsub("_2018", "", subdata$variable)
+  subdata$value <- as.numeric(subdata$value)
+  subdata <- dcast(subdata, Year ~ variable)
+  subdata$Year <- factor(subdata$Year, levels=subdata$Year)
+  p1 <- ggplot(subdata, aes(x=Year, ymin = A_PCT10, 
+           ymax = A_PCT90, lower = A_PCT10, 
+           upper = A_PCT90, middle = A_MEDIAN)) + 
+       geom_boxplot(stat = 'identity') +
+       annotate("text", x=1:2, y=subdata$A_PCT10+(subdata$A_PCT90-subdata$A_PCT10)*.025, label="10th pctl", size = 3) +
+       annotate("text", x=1:2, y=subdata$A_PCT25+(subdata$A_PCT90-subdata$A_PCT10)*.025, label="25th pctl", size = 3) +
+       annotate("text", x=1:2, y=subdata$A_MEDIAN+(subdata$A_PCT90-subdata$A_PCT10)*.025, label="50th pctl", size = 3) +
+       annotate("text", x=1:2, y=subdata$A_PCT75+(subdata$A_PCT90-subdata$A_PCT10)*.025, label="75th pctl", size = 3) +
+       annotate("text", x=1:2, y=subdata$A_PCT90+(subdata$A_PCT90-subdata$A_PCT10)*.025, label="90th pctl", size = 3) +
+       ggtitle("Modified 'boxplots' of Ann. Wages") +
+       xlab('Year') + 
+       ylab('Annual Wage') +
+       geom_crossbar(aes(y = A_PCT25 )) +
+       geom_crossbar(aes(y = A_PCT75))
+
+  
+  subdata2 <- subset(major_emp_trends, OCC_TITLE == input$category) %>% select(TOT_EMP_2008, TOT_EMP_2018) %>% melt()
+  subdata2$variable <- as.character(subdata2$variable)
+  subdata2$value <- as.numeric(subdata2$value)
+  subdata2 <- subdata2 %>% mutate(Year = case_when(
+      substrRight(variable, 5) == "_2008" ~ "2008",
+      TRUE ~ "2018"))
+  
+  p2 <- ggplot(subdata2, aes(x=Year, y=value)) +
+    geom_bar(stat = "identity") +
+    geom_text(data=subdata2,aes(x=Year,y=value*1.03,label=format(value, big.mark=",") ),vjust=0) +
+    scale_y_continuous(labels = comma) +
+    ggtitle("Total # Employed Nationally") +
+    ylab("Total")
+  
+  grid.arrange(p1, p2, ncol=1)
+  
+}, height = 800, width = 600)
+```
+
+</div>
+
+For example by selecting Farming, it is clear that the total number employed nationally has increased from ~438K to ~480K. We can also clearly see that every percentile has experienced an increase in annual wages from 2008 to 2018, and the spread between the 10th, 25th, and 50th percentile has become much narrower in 2018.
+
+# VII. Conclusion
+
+The focus of our study was to explore how much of the reported growing income disparity in the US could be confirmed by employment data, and whether more granular information on employment data could shed more light on the situation.
+
+Initially, we saw that data at the aggregated level does confirm reports of growing income disparity with an increase in the difference between the 10th and 90th percentiles, and further we saw stagnancy in the "middle" income with no real dollar growth from 2008 to 2018. Diving into the details, we saw further that at the major job category level - there was strong growth in the number of jobs at the lowest end of the average annual salary pool and strong growth at the highest end, but again, less growth in the middle. Finally, when it comes to average salary and the percentile distribution of salary, we saw that promisingly, there had been increases in the bottom 10%, but the increases in the top 90% for the top earning job categories were much larger.
+
+The hope is that this data helps illuminate and puts a more interesting and granular spin on the broader topic of jobs and income disparity in the United States.
+
+Ther are of course limitations with the data. Ideally, the study could have even gone more granularly into subcategories (for example, within the "Management" category, there is an incredibly wide range of jobs all with different characteristics). However, unfortunately such a study would  make it more difficult to observe aggregate patterns (the graphs with 22 categories were difficult to read, but not impossible, whereas graphs with 800+ categories are out of the question). In addition, as noted previously, there are additional issues with changing job codes / missing values / substituted values, that would require managing. While the scope of this project was solely on the 22 job categories, a more granual analysis could be a potential future step with a tool that enabled a way to automatically "dig in" (i.e., expand each job category into sub categories).
